@@ -143,7 +143,7 @@ def rwkv_sequential(model, dataloader, dev):
     return quantizers
 
 # TODO: perform packing on GPU
-def rwkv_pack(model, quantizers, wbits, groupsize):
+def rwkv_pack(model, quantizers, wbits, groupsize, save_path):
     layers = find_layers(model)
     layers = {n: layers[n] for n in quantizers}
     make_quant(model, quantizers, wbits, groupsize)
@@ -153,9 +153,9 @@ def rwkv_pack(model, quantizers, wbits, groupsize):
         print(name)
         quantizers[name],scale,zero,g_idx = quantizers[name]
         qlayers[name].pack(layers[name], scale, zero, g_idx)
-    print('Done.')
-    return model
 
+    torch.save([{key: None for key in quantizers.keys()}, model.state_dict()], save_path) 
+    print('Done.')
 
 def load_quant(model, checkpoint, wbits, groupsize=-1):
     from transformers import RwkvConfig, RwkvForCausalLM
@@ -325,10 +325,7 @@ if __name__ == '__main__':
         model = load_quant(args.model, args.load, args.wbits, args.groupsize)
     else:
         print("Create model ...")
-        if args.model == "sgugger/rwkv-7b-pile":
-            raise NotImplementedError("Wait for https://github.com/huggingface/transformers/issues/23368 to be fixed first")
-        else:
-            model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=torch.float16, device_map="auto")
+        model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=torch.float16, device_map="auto")
         print(model.hf_device_map)
         model.seqlen = 1024 # https://huggingface.co/BlinkDL/rwkv-4-pile-430m
         model.eval()
@@ -349,5 +346,4 @@ if __name__ == '__main__':
         
     if args.save:
         print("Saving model ...")
-        rwkv_pack(model, quantizers, args.wbits, args.groupsize)
-        torch.save([{key: None for key in quantizers.keys()}, model.state_dict()], args.save) 
+        rwkv_pack(model, quantizers, args.wbits, args.groupsize, args.save)
